@@ -33,5 +33,66 @@ const create = async ({ location, level }) => {
   return rows[0];
 };
 
+const findById = async (id) => {
+    const {
+        rows    } = await pool.query('SELECT id, location, level, status, hero_id FROM incidents WHERE id = $1', [id]);
+    return rows[0];
+};
 
-module.exports = { findAll, create };
+
+const assignHeroToIncident = async (incidentId, heroId) => {
+  const client = await pool.connect();
+  
+  try {
+    await client.query('BEGIN');
+
+    await client.query(
+      'UPDATE heroes SET status = $1 WHERE id = $2',
+      ['busy', heroId]
+    );
+
+    await client.query(
+      'UPDATE incidents SET hero_id = $1, status = $2 WHERE id = $3',
+      [heroId, 'assigned', incidentId]
+    );
+    
+    await client.query('COMMIT'); 
+    return true;
+
+  } catch (error) {
+    await client.query('ROLLBACK'); 
+    throw error; 
+  } finally {
+    client.release(); 
+  }
+};
+
+const resolveIncident = async (incidentId, heroId) => {
+    const client = await pool.connect();
+  
+  try {
+    await client.query('BEGIN');
+
+    await client.query(
+      'UPDATE heroes SET status = $1 WHERE id = $2',
+      ['available', heroId]
+    );
+
+    await client.query(
+      'UPDATE incidents SET hero_id = $1, status = $2 WHERE id = $3',
+      [heroId, 'resolved', incidentId]
+    );
+    
+    await client.query('COMMIT'); 
+    return true;
+
+  } catch (error) {
+    await client.query('ROLLBACK'); 
+    throw error; 
+  } finally {
+    client.release(); 
+  }
+};
+
+
+module.exports = { findAll, create, findById, assignHeroToIncident, resolveIncident };

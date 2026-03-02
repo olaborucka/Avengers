@@ -15,16 +15,29 @@ const assignHero = async (incidentId, heroId) => {
     const incident = await incidentRepository.findById(incidentId);
     if (!incident) throw makeError('Incydent nie istnieje', 'NOT_FOUND');
 
-    if (incident.status != 'open') throw makeError('Incydent nie jest obslugiwany')
+    if (incident.status != 'open') throw makeError('Incydent nie jest otwarty', 'CONFLICT');
+    if (hero.status != 'available') throw makeError('Bohater jest obecnie niedostępny', 'CONFLICT');
+    if (incident.level === 'critical' && hero.power != 'flight' && hero.power != 'strength') throw makeError('Zły bohater na ten incydent', 'FORBIDDEN');
 
-    if (hero.status != 'available') throw makeError('Bohater jest obecnie niedostępny')
-    // 3. Jeśli level incydentu to 'critical', a moc (power) bohatera to NIE 'flight' i NIE 'strength', rzuć błąd 'FORBIDDEN' (np. 'Zbyt słaby bohater na ten incydent')
-    if (incident.level === 'critical' && hero.power != 'flight' && hero.power != 'strength') throw makeError('Zły bohater na ten incydent')
-
-    // --------------------------------------------------------
-
-    // Miejsce na transakcję (dodamy w kolejnym kroku!)
-    return "Walidacja zakończona sukcesem";
+    await incidentRepository.assignHeroToIncident(incidentId, heroId);
+    
+    return {incidentId, heroId, status: 'assigned'};    
 };
 
-module.exports = { assignHero };
+const findById = async (id) => {
+    const {
+        rows    } = await pool.query('SELECT id, name, power, status FROM heroes WHERE id = $1', [id]);
+    return rows[0];
+};
+
+const resolve = async (incidentId) => {
+    const incident = await incidentRepository.findById(incidentId);
+
+    if (!incident) throw makeError('Incydent nie istnieje', 'NOT_FOUND');
+    if (incident.status != 'assigned') throw makeError('Incydent nie jest przypisany', 'CONFLICT');
+
+    await incidentRepository.resolveIncident(incidentId, incident.hero_id);
+
+    return { incidentId, status: 'resolved' };
+};
+module.exports = { assignHero, resolve };
