@@ -1,5 +1,5 @@
 
-const heroRepository = require('../repositories/heroRepository');
+const heroRepository = require('../repository/herorepository');
 
 const handleError = (err, res) => {
 

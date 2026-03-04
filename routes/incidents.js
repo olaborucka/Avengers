@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const incidentController = require('../controllers/incidentController');
+const incidentController = require('../controller/incidentcontroller');
 
 router.get('/', incidentController.getAll);
 router.post('/', incidentController.create);

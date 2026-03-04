@@ -1,6 +1,6 @@
 
-const incidentRepository = require('../repositories/incidentrepository');
-const incidentService = require('../services/incidentservice');
+const incidentRepository = require('../repository/incidentrepository');
+const incidentService = require('../service/incidentservice');
 const { handleError } = require('./herocontroller');
 
 const getAll = async (req, res) => {

@@ -1,6 +1,6 @@
 
-const incidentRepository = require('../repositories/incidentRepository');
-const heroRepository = require('../repositories/heroRepository');
+const incidentRepository = require('../repository/incidentrepository');
+const heroRepository = require('../repository/herorepository');
 
 const makeError = (message, code) => {
     const err = new Error(message);
@@ -24,11 +24,7 @@ const assignHero = async (incidentId, heroId) => {
     return {incidentId, heroId, status: 'assigned'};    
 };
 
-const findById = async (id) => {
-    const {
-        rows    } = await pool.query('SELECT id, name, power, status FROM heroes WHERE id = $1', [id]);
-    return rows[0];
-};
+
 
 const resolve = async (incidentId) => {
     const incident = await incidentRepository.findById(incidentId);

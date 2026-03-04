@@ -25,6 +25,12 @@ const findAll = async ({ power, status } = {}) => {
     return rows;
 };
 
+const findById = async (id) => {
+    const {
+        rows    } = await pool.query('SELECT id, name, power, status FROM heroes WHERE id = $1', [id]);
+    return rows[0];
+};
+
 const create = async ({ name, power }) => {
   const { rows } = await pool.query(
     'INSERT INTO heroes (name, power) VALUES ($1, $2) RETURNING *',
