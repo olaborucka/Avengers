@@ -1,98 +1,87 @@
-const pool = require('../db');
+// Zmieniamy import na naszego Knexa
+const db = require('../db/knex');
 
-const findAll = async ({ level, status } = {}) => {
-    let query = 'SELECT id, location, level, status, hero_id FROM incidents';
-    const values = [];
-    const conditions = [];
+const findAll = async ({ level, status, district, page = 1, pageSize = 10 } = {}) => {
+    let query = db('incidents').select('*');
 
-    if (level) {
-        values.push(level); 
-        conditions.push(`level = $${values.length}`);
-    }
+    if (level) query = query.where({ level });
+    if (status) query = query.where({ status });
+    if (district) query = query.where('district', 'ilike', `%${district}%`);
 
-    if (status) {
-        values.push(status); 
-        conditions.push(`status = $${values.length}`);
-    }
+    query = query.orderBy('id', 'desc');
 
-    if (conditions.length > 0) {
-        query += ' WHERE ' + conditions.join(' AND ');
-    }
+    const limit = Math.min(parseInt(pageSize, 10), 50);
+    const offset = (Math.max(parseInt(page, 10), 1) - 1) * limit;
 
-    query += ' ORDER BY id';
+    // TUTAJ POPRAWKA: dodane .clearOrder()
+    const countQuery = query.clone().clearSelect().clearOrder().count('* as total').first();
+    const dataQuery = query.limit(limit).offset(offset);
 
-    const { rows } = await pool.query(query, values);
-    return rows;
+    const [totalResult, data] = await Promise.all([countQuery, dataQuery]);
+    const total = parseInt(totalResult.total, 10);
+
+    return {
+        data,
+        pagination: {
+            page: parseInt(page, 10),
+            pageSize: limit,
+            total,
+            totalPages: Math.ceil(total / limit)
+        }
+    };
 };
 
 const create = async ({ location, level }) => {
-  const { rows } = await pool.query(
-    'INSERT INTO incidents (location, level) VALUES ($1, $2) RETURNING *',
-    [location, level]
-  );
-  return rows[0];
-};
-
-const findById = async (id) => {
-    const {
-        rows    } = await pool.query('SELECT id, location, level, status, hero_id FROM incidents WHERE id = $1', [id]);
-    return rows[0];
+    const [incident] = await db('incidents')
+        .insert({ location, level })
+        .returning('*');
+        
+    return incident;
 };
 
 
-const assignHeroToIncident = async (incidentId, heroId) => {
-  const client = await pool.connect();
-  
-  try {
-    await client.query('BEGIN');
+const findById = async (id, trx = db) => {
+    return await trx('incidents').where({ id }).first();
+};
 
-    await client.query(
-      'UPDATE heroes SET status = $1 WHERE id = $2',
-      ['busy', heroId]
-    );
+const assignHeroToIncident = async (incidentId, heroId, trx) => {
+    await trx('heroes').where({ id: heroId }).update({ status: 'busy' });
+    await trx('incidents').where({ id: incidentId }).update({ 
+        hero_id: heroId, 
+        status: 'assigned',
+        assigned_at: db.fn.now() 
+    });
+};
 
-    await client.query(
-      'UPDATE incidents SET hero_id = $1, status = $2 WHERE id = $3',
-      [heroId, 'assigned', incidentId]
-    );
+const resolveIncident = async (incidentId, heroId, trx) => {
+    await trx('heroes').where({ id: heroId }).update({ status: 'available' }).increment('missions_count', 1);
+    await trx('incidents').where({ id: incidentId }).update({ 
+        status: 'resolved',
+        resolved_at: db.fn.now() 
+    });
+};
+
+const findByHeroId = async (heroId, { page = 1, pageSize = 10 } = {}, trx = db) => {
+    let query = trx('incidents').where({ hero_id: heroId }).orderBy('assigned_at', 'desc');
     
-    await client.query('COMMIT'); 
-    return true;
+    const limit = Math.min(parseInt(pageSize, 10), 50);
+    const offset = (Math.max(parseInt(page, 10), 1) - 1) * limit;
 
-  } catch (error) {
-    await client.query('ROLLBACK'); 
-    throw error; 
-  } finally {
-    client.release(); 
-  }
-};
+    const countQuery = query.clone().clearSelect().clearOrder().count('* as total').first();
+    const dataQuery = query.limit(limit).offset(offset);
 
-const resolveIncident = async (incidentId, heroId) => {
-    const client = await pool.connect();
-  
-  try {
-    await client.query('BEGIN');
-
-    await client.query(
-      'UPDATE heroes SET status = $1 WHERE id = $2',
-      ['available', heroId]
-    );
-
-    await client.query(
-      'UPDATE incidents SET hero_id = $1, status = $2 WHERE id = $3',
-      [heroId, 'resolved', incidentId]
-    );
+    const [totalResult, data] = await Promise.all([countQuery, dataQuery]);
     
-    await client.query('COMMIT'); 
-    return true;
-
-  } catch (error) {
-    await client.query('ROLLBACK'); 
-    throw error; 
-  } finally {
-    client.release(); 
-  }
+    return {
+        data,
+        pagination: {
+            page: parseInt(page, 10),
+            pageSize: limit,
+            total: parseInt(totalResult.total, 10),
+            totalPages: Math.ceil(parseInt(totalResult.total, 10) / limit)
+        }
+    };
 };
 
-
-module.exports = { findAll, create, findById, assignHeroToIncident, resolveIncident };
+// ZMIEŃ OSTATNIĄ LINIJKĘ NA TĘ:
+module.exports = { findAll, create, findById, assignHeroToIncident, resolveIncident, findByHeroId };

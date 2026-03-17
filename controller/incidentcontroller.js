@@ -5,9 +5,10 @@ const { handleError } = require('./herocontroller');
 
 const getAll = async (req, res) => {
     try {
-        const { level, status } = req.query;
-        const incidents = await incidentRepository.findAll({ level, status });
-        res.status(200).json({ data: incidents });
+        const { level, status, district, page, pageSize } = req.query;
+        const result = await incidentRepository.findAll({ level, status, district, page, pageSize });
+        
+        res.status(200).json(result);
     } catch (err) {
         handleError(err, res);
     }

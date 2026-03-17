@@ -1,5 +1,6 @@
 
 const heroRepository = require('../repository/herorepository');
+const incidentRepository = require('../repository/incidentrepository');
 
 const handleError = (err, res) => {
 
@@ -21,10 +22,11 @@ const handleError = (err, res) => {
 
 const getAll = async (req, res) => {
     try {
-        const { status, power } = req.query;
-        const heroes = await heroRepository.findAll({ status, power });
+        const { status, power, sort, page, pageSize } = req.query;
+        // Przekazujemy nowe parametry do repozytorium
+        const result = await heroRepository.findAll({ status, power, sort, page, pageSize });
 
-        res.status(200).json({ data: heroes });
+        res.status(200).json(result);
     } catch (err) {
         handleError(err, res);
     }
@@ -50,4 +52,32 @@ const create = async (req, res) => {
     }
 };
 
-module.exports = { getAll, create, handleError }; // Eksportujemy też handleError, przyda się do incydentów!
+const update = async (req, res) => {
+    try {
+        const id = parseInt(req.params.id, 10);
+        if (isNaN(id)) return res.status(400).json({ type: '/errors/bad-request', status: 400, detail: 'Złe ID' });
+        
+        const hero = await heroRepository.findById(id);
+        if (!hero) return res.status(404).json({ type: '/errors/not-found', status: 404, detail: 'Bohater nie istnieje' });
+
+        const updated = await heroRepository.update(id, req.body);
+        res.status(200).json({ data: updated });
+    } catch (err) { handleError(err, res); }
+};
+
+const getIncidents = async (req, res) => {
+    try {
+        const id = parseInt(req.params.id, 10);
+        if (isNaN(id)) return res.status(400).json({ type: '/errors/bad-request', status: 400, detail: 'Złe ID' });
+
+        const hero = await heroRepository.findById(id);
+        if (!hero) return res.status(404).json({ type: '/errors/not-found', status: 404, detail: 'Bohater nie istnieje' });
+
+        const { page, pageSize } = req.query;
+        const result = await incidentRepository.findByHeroId(id, { page, pageSize });
+        res.status(200).json(result);
+    } catch (err) { handleError(err, res); }
+};
+
+// ZMIEŃ OSTATNIĄ LINIJKĘ NA TĘ:
+module.exports = { getAll, create, handleError, update, getIncidents };

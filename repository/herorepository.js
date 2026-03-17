@@ -1,43 +1,58 @@
-const pool = require('../db');
+// Zmieniamy import bazy na naszego Knexa!
+const db = require('../db/knex');
 
-const findAll = async ({ power, status } = {}) => {
-    let query = 'SELECT id, name, power, status FROM heroes';
-    const values = [];
-    const conditions = [];
+const findAll = async ({ power, status, sort, page = 1, pageSize = 10 } = {}) => {
+    let query = db('heroes').select('id', 'name', 'power', 'status', 'missions_count', 'created_at');
 
-    if (power) {
-        values.push(power); 
-        conditions.push(`power = $${values.length}`);
+    if (power) query = query.where({ power });
+    if (status) query = query.where({ status });
+
+    const allowedSorts = ['name', 'missions_count', 'created_at'];
+    if (sort && allowedSorts.includes(sort)) {
+        query = query.orderBy(sort, 'asc');
+    } else {
+        query = query.orderBy('id', 'asc');
     }
 
-    if (status) {
-        values.push(status); 
-        conditions.push(`status = $${values.length}`);
-    }
+    const limit = Math.min(parseInt(pageSize, 10), 50);
+    const offset = (Math.max(parseInt(page, 10), 1) - 1) * limit;
 
-    if (conditions.length > 0) {
-        query += ' WHERE ' + conditions.join(' AND ');
-    }
+    // TUTAJ POPRAWKA: dodane .clearOrder() żeby baza nie panikowała przy liczeniu
+    const countQuery = query.clone().clearSelect().clearOrder().count('* as total').first();
+    const dataQuery = query.limit(limit).offset(offset);
 
-    query += ' ORDER BY id';
+    const [totalResult, data] = await Promise.all([countQuery, dataQuery]);
+    const total = parseInt(totalResult.total, 10);
 
-    const { rows } = await pool.query(query, values);
-    return rows;
+    return {
+        data,
+        pagination: {
+            page: parseInt(page, 10),
+            pageSize: limit,
+            total,
+            totalPages: Math.ceil(total / limit)
+        }
+    };
 };
 
-const findById = async (id) => {
-    const {
-        rows    } = await pool.query('SELECT id, name, power, status FROM heroes WHERE id = $1', [id]);
-    return rows[0];
+const findById = async (id, trx = db) => {
+    return await trx('heroes').where({ id }).first();
 };
-
 const create = async ({ name, power }) => {
-  const { rows } = await pool.query(
-    'INSERT INTO heroes (name, power) VALUES ($1, $2) RETURNING *',
-    [name, power]
-  );
-  return rows[0];
+    // Zamiast 'INSERT INTO...' używamy .insert()
+    const [hero] = await db('heroes')
+        .insert({ name, power })
+        .returning('*'); // Zwracamy wszystkie kolumny nowo utworzonego bohatera
+        
+    return hero;
 };
 
+const update = async (id, data, trx = db) => {
+    // Aktualizujemy dane i zwracamy zaktualizowany wiersz
+    const [updated] = await trx('heroes').where({ id }).update(data).returning('*');
+    return updated;
+};
 
-module.exports = { findAll, create };
+// ZMIEŃ OSTATNIĄ LINIJKĘ NA TĘ (aby wyeksportować nową funkcję):
+module.exports = { findAll, findById, create, update };
+
