@@ -1,58 +1,62 @@
-// Zmieniamy import bazy na naszego Knexa!
-const db = require('../db/knex');
+const { Hero } = require('../db/models');
 
 const findAll = async ({ power, status, sort, page = 1, pageSize = 10 } = {}) => {
-    let query = db('heroes').select('id', 'name', 'power', 'status', 'missions_count', 'created_at');
-
-    if (power) query = query.where({ power });
-    if (status) query = query.where({ status });
-
-    const allowedSorts = ['name', 'missions_count', 'created_at'];
-    if (sort && allowedSorts.includes(sort)) {
-        query = query.orderBy(sort, 'asc');
-    } else {
-        query = query.orderBy('id', 'asc');
-    }
-
+    // Paginacja i filtrowanie
     const limit = Math.min(parseInt(pageSize, 10), 50);
     const offset = (Math.max(parseInt(page, 10), 1) - 1) * limit;
 
-    // TUTAJ POPRAWKA: dodane .clearOrder() żeby baza nie panikowała przy liczeniu
-    const countQuery = query.clone().clearSelect().clearOrder().count('* as total').first();
-    const dataQuery = query.limit(limit).offset(offset);
+    const options = {
+        where: {},
+        limit,
+        offset,
+        order: []
+    };
 
-    const [totalResult, data] = await Promise.all([countQuery, dataQuery]);
-    const total = parseInt(totalResult.total, 10);
+    if (power) options.where.power = power;
 
+    let modelToUse = Hero;
+    if (status === 'available') {
+        modelToUse = Hero.scope('available');
+    } else if (status) {
+        options.where.status = status;
+    }
+
+    // Sortowanie
+    const allowedSorts = ['name', 'missions_count', 'created_at'];
+    if (sort && allowedSorts.includes(sort)) {
+        options.order.push([sort, 'ASC']);
+    } else {
+        options.order.push(['id', 'ASC']);
+    }
+
+    const { count, rows } = await modelToUse.findAndCountAll(options);
+    
     return {
-        data,
+        data: rows,
         pagination: {
             page: parseInt(page, 10),
             pageSize: limit,
-            total,
-            totalPages: Math.ceil(total / limit)
+            total: count,
+            totalPages: Math.ceil(count / limit)
         }
     };
 };
 
-const findById = async (id, trx = db) => {
-    return await trx('heroes').where({ id }).first();
+const findById = async (id, trx) => {
+    return await Hero.findByPk(id, { transaction: trx });
+
 };
+
 const create = async ({ name, power }) => {
-    // Zamiast 'INSERT INTO...' używamy .insert()
-    const [hero] = await db('heroes')
-        .insert({ name, power })
-        .returning('*'); // Zwracamy wszystkie kolumny nowo utworzonego bohatera
-        
-    return hero;
+    return await Hero.create({ name, power });
 };
 
-const update = async (id, data, trx = db) => {
-    // Aktualizujemy dane i zwracamy zaktualizowany wiersz
-    const [updated] = await trx('heroes').where({ id }).update(data).returning('*');
-    return updated;
+const update = async (id, data, trx) => {
+    const hero = await Hero.findByPk(id, { transaction: trx });
+    if (!hero) {
+        throw new Error('Hero not found');
+    }
+    return await hero.update(data, { transaction: trx });
 };
 
-// ZMIEŃ OSTATNIĄ LINIJKĘ NA TĘ (aby wyeksportować nową funkcję):
 module.exports = { findAll, findById, create, update };
-

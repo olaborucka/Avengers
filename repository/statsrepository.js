@@ -1,21 +1,48 @@
-const db = require('../db/knex');
+const { Hero, Incident, sequelize } = require('../db/models');
 
 const getStats = async () => {
-    // 1. Zliczenia ogólne i grupowanie API Knex.js
-    const heroesTotal = await db('heroes').count('* as total').first();
-    const incidentsTotal = await db('incidents').count('* as total').first();
+    // Proste zliczanie całościowe
+    const heroesTotal = await Hero.count();
+    const incidentsTotal = await Incident.count();
     
-    const heroesByStatus = await db('heroes').select('status').count('* as count').groupBy('status');
-    const heroesByPower = await db('heroes').select('power').count('* as count').groupBy('power');
+    // Użycie sequelize.fn i group do agregacji statusów i mocy
+    const heroesByStatus = await Hero.findAll({
+        attributes: ['status', [sequelize.fn('COUNT', sequelize.col('id')), 'count']],
+        group: ['status'],
+        raw: true // Zwraca czysty obiekt JSON zamiast ciężkiej instancji modelu
+    });
     
-    const incidentsByStatus = await db('incidents').select('status').count('* as count').groupBy('status');
-    const incidentsByLevel = await db('incidents').select('level').count('* as count').groupBy('level');
+    const heroesByPower = await Hero.findAll({
+        attributes: ['power', [sequelize.fn('COUNT', sequelize.col('id')), 'count']],
+        group: ['power'],
+        raw: true
+    });
+    
+    const incidentsByStatus = await Incident.findAll({
+        attributes: ['status', [sequelize.fn('COUNT', sequelize.col('id')), 'count']],
+        group: ['status'],
+        raw: true
+    });
+    
+    const incidentsByLevel = await Incident.findAll({
+        attributes: ['level', [sequelize.fn('COUNT', sequelize.col('id')), 'count']],
+        group: ['level'],
+        raw: true
+    });
 
-    // 2. Wymóg: średnia (.avg()) z Knexa (np. średnia liczba misji bohaterów)
-    const avgMissions = await db('heroes').avg('missions_count as avg').first();
+    // Średnia liczba misji
+    const avgMissionsData = await Hero.findAll({
+        attributes: [[sequelize.fn('AVG', sequelize.col('missions_count')), 'avg']],
+        raw: true
+    });
+    const avgMissions = avgMissionsData[0]?.avg || 0;
 
-    // 3. Średni czas rozwiązania incydentu w minutach (liczone w JS, aby w 100% uniknąć zakazanego knex.raw)
-    const resolved = await db('incidents').where({ status: 'resolved' }).whereNotNull('assigned_at').whereNotNull('resolved_at').select('assigned_at', 'resolved_at');
+    // Średni czas rozwiązania incydentu w minutach
+    const resolved = await Incident.findAll({
+        where: { status: 'resolved' },
+        attributes: ['assigned_at', 'resolved_at'],
+        raw: true
+    });
     
     let totalMinutes = 0;
     if (resolved.length > 0) {
@@ -27,13 +54,13 @@ const getStats = async () => {
 
     return {
         heroes: {
-            total: parseInt(heroesTotal.total, 10),
+            total: heroesTotal,
             byStatus: heroesByStatus,
             byPower: heroesByPower,
-            avgMissions: parseFloat(avgMissions.avg || 0).toFixed(2)
+            avgMissions: parseFloat(avgMissions).toFixed(2)
         },
         incidents: {
-            total: parseInt(incidentsTotal.total, 10),
+            total: incidentsTotal,
             byStatus: incidentsByStatus,
             byLevel: incidentsByLevel,
             avgResolutionTimeMinutes: resolved.length > 0 ? (totalMinutes / resolved.length).toFixed(2) : 0
